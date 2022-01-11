@@ -1,21 +1,25 @@
-"""SoftDesk URL Configuration
+from django.urls import path, include
+from rest_framework_nested import routers
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/4.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-from django.contrib import admin
-from django.urls import path
+from projects import views
 
+
+# Routers provide an easy way of automatically determining the URL conf.
+router = routers.DefaultRouter()
+router.register('projects', views.ProjectViewSet)
+
+p_router = routers.NestedDefaultRouter(router, 'projects', lookup='project')
+p_router.register('issues', views.IssueViewSet)
+p_router.register('contributors', views.ContributorViewSet)
+
+i_router = routers.NestedDefaultRouter(p_router, 'issues', lookup='issue')
+i_router.register('comments', views.CommentViewSet)
+
+
+# TODO add login and signup
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('', include(router.urls)),
+    path('', include(p_router.urls)),
+    path('', include(i_router.urls)),
+    path('api-auth/', include('rest_framework.urls', namespace='rest_framework'))
 ]
