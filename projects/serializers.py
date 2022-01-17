@@ -4,38 +4,37 @@ from rest_framework import serializers
 from projects.models import Project, Contributor, Issue, Comment
 
 
-class UserSerializer(serializers.HyperlinkedModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['url', 'username', 'email']
+        fields = ['id', 'username', 'first_name', 'last_name', 'password', 'email']
+
+    def create(self, validated_data):
+        return User.objects.create_user(**validated_data)
 
 
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = '__all__'
-        read_only__fields = ('author', 'id')
+        fields = ['id', 'title', 'description', 'type', 'author']
 
 
 class ContributorsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Contributor
-        fields = '__all__'
-        read_only__fields = ('project', 'role', 'id')
+        fields = "__all__"
 
 
 class IssueSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Issue
-        fields = '__all__'
-        read_only__fields = ('project', 'author', 'created_time', 'id')
+        fields = "__all__"
 
 
 class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = '__all__'
-        read_only__fields = ('author', 'issue', 'created_time', 'id')
+        fields = "__all__"

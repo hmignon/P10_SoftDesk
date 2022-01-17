@@ -12,16 +12,22 @@ class Project(models.Model):
             ('iOS', 'iOS'),
             ('Android', 'Android')
         ],
-        max_length=128
+        max_length=8
     )
-    author = models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    author = models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='author')
 
 
 class Contributor(models.Model):
     user = models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    project = models.ForeignKey(Project, on_delete=models.CASCADE)
-    permission = models.CharField(max_length=150, choices='')
-    role = models.CharField(max_length=150)
+    project = models.ForeignKey(to=Project, on_delete=models.CASCADE, related_name='contributors')
+    role = models.CharField(
+        max_length=11,
+        choices=[
+            ('author', 'author'),
+            ('contributor', 'contributor')
+        ],
+        default='contributor'
+    )
 
 
 class Issue(models.Model):
@@ -33,7 +39,7 @@ class Issue(models.Model):
             ('Task', 'Task'),
             ('Upgrade', 'Upgrade')
         ],
-        max_length=20
+        max_length=7
     )
     priority = models.CharField(
         choices=[
@@ -41,7 +47,8 @@ class Issue(models.Model):
             ('Medium', 'Medium'),
             ('High', 'High')
         ],
-        max_length=20
+        max_length=6,
+        default='Low'
     )
     status = models.CharField(
         choices=[
@@ -49,15 +56,16 @@ class Issue(models.Model):
             ('In progress', 'In progress'),
             ('Done', 'Done')
         ],
-        max_length=20
+        max_length=11
     )
+    project = models.ForeignKey(to=Project, on_delete=models.CASCADE)
     author = models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    assignee = models.ForeignKey(Contributor, on_delete=models.CASCADE)
+    assignee = models.ForeignKey(to=Contributor, on_delete=models.CASCADE)
     created_time = models.DateTimeField(auto_now_add=True)
 
 
 class Comment(models.Model):
-    description = models.CharField(max_length=2048)
+    description = models.TextField(max_length=2048)
     author = models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    issue = models.ForeignKey(Issue, on_delete=models.CASCADE)
+    issue = models.ForeignKey(to=Issue, on_delete=models.CASCADE)
     created_time = models.DateTimeField(auto_now_add=True)
