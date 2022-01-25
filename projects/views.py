@@ -6,7 +6,9 @@ from rest_framework.response import Response
 from .models import Project, Issue, Contributor, Comment
 from .permissions import (
     ProjectPermissions,
-    Permissions,
+    ContributorPermissions,
+    IssuePermissions,
+    CommentPermissions,
 )
 from .serializers import (
     ProjectSerializer,
@@ -20,21 +22,17 @@ from .serializers import (
 @permission_classes([IsAuthenticated, ProjectPermissions])
 def project_list(request):
     if request.method == 'GET':
-        projects = Project.objects.filter(author=request.user)
+        projects = Project.objects.filter(contributors__user=request.user)
         serializer = ProjectSerializer(projects, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'POST':
-        serializer = ProjectSerializer(data=request.data)
-        if serializer.is_valid():
-            project = serializer
-            project.save()
-            try:
-                author = Contributor.objects.get(user=request.user)
-                author.project = project
-            except Contributor.DoesNotExist:
-                author = Contributor(user=request.user, project=project, role='author')
-                author.save()
+        data = request.data.copy()
+        data['author'] = request.user.id
+        serializer = ProjectSerializer(data=data)
+        if serializer.is_valid(raise_exception=True):
+            project = serializer.save()
+            Contributor.objects.create(user=request.user, project=project, role='AUTHOR')
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -54,11 +52,12 @@ def project_detail(request, project_pk):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'PUT':
-        serializer = ProjectSerializer(project, data=request.data)
-
-        if serializer.is_valid():
+        data = request.data.copy()
+        data['author'] = request.user.id
+        serializer = ProjectSerializer(project, data=data)
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -68,7 +67,7 @@ def project_detail(request, project_pk):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated, Permissions])
+@permission_classes([IsAuthenticated, ContributorPermissions])
 def contributor_list(request, project_pk):
     try:
         project = Project.objects.get(id=project_pk)
@@ -81,8 +80,20 @@ def contributor_list(request, project_pk):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'POST':
-        serializer = ContributorSerializer(data=request.contributor.data)
-        if serializer.is_valid():
+        data = request.data.copy()
+        data['project'] = project.id
+
+        contrib_list = []
+        contributors = Contributor.objects.filter(project=project)
+        for contrib in contributors:
+            contrib_list.append(contrib.user)
+
+        if data['user'] in contrib_list:
+            return Response('This user has already been added.', status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ContributorSerializer(data=data)
+
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -90,7 +101,7 @@ def contributor_list(request, project_pk):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAuthenticated, Permissions])
+@permission_classes([IsAuthenticated, ContributorPermissions])
 def contributor_detail(request, contributor_pk):
     try:
         contributor = Contributor.objects.get(id=contributor_pk)
@@ -103,7 +114,7 @@ def contributor_detail(request, contributor_pk):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated, Permissions])
+@permission_classes([IsAuthenticated, IssuePermissions])
 def issue_list(request, project_pk):
     try:
         project = Project.objects.get(id=project_pk)
@@ -116,8 +127,11 @@ def issue_list(request, project_pk):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'POST':
-        serializer = IssueSerializer(data=request.data)
-        if serializer.is_valid():
+        data = request.data.copy()
+        data['project'] = project.id
+        data['author'] = request.user.id
+        serializer = IssueSerializer(data=data)
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -125,7 +139,7 @@ def issue_list(request, project_pk):
 
 
 @api_view(['PUT', 'DELETE'])
-@permission_classes([IsAuthenticated, Permissions])
+@permission_classes([IsAuthenticated, IssuePermissions])
 def issue_detail(request, issue_pk):
     try:
         issue = Issue.objects.get(id=issue_pk)
@@ -133,9 +147,11 @@ def issue_detail(request, issue_pk):
         return Response(status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'PUT':
-        serializer = IssueSerializer(issue, data=request.data)
-
-        if serializer.is_valid():
+        data = request.data.copy()
+        data['project'] = issue.project
+        data['author'] = request.user.id
+        serializer = IssueSerializer(issue, data=data)
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -147,7 +163,7 @@ def issue_detail(request, issue_pk):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated, Permissions])
+@permission_classes([IsAuthenticated, CommentPermissions])
 def comment_list(request, issue_pk):
     try:
         issue = Issue.objects.get(id=issue_pk)
@@ -160,8 +176,11 @@ def comment_list(request, issue_pk):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'POST':
-        serializer = CommentSerializer(data=request.data)
-        if serializer.is_valid():
+        data = request.data.copy()
+        data['issue'] = issue.id
+        data['author'] = request.user.id
+        serializer = CommentSerializer(data=data)
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -169,7 +188,7 @@ def comment_list(request, issue_pk):
 
 
 @api_view(['GET', 'PUT', 'DELETE'])
-@permission_classes([IsAuthenticated, Permissions])
+@permission_classes([IsAuthenticated, CommentPermissions])
 def comment_detail(request, comment_pk):
     try:
         comment = Comment.objects.get(id=comment_pk)
@@ -181,9 +200,11 @@ def comment_detail(request, comment_pk):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'PUT':
-        serializer = ProjectSerializer(comment, data=request.data)
-
-        if serializer.is_valid():
+        data = request.data.copy()
+        data['issue'] = comment.issue
+        data['author'] = request.user.id
+        serializer = ProjectSerializer(comment, data=data)
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
 
