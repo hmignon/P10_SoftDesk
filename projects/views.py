@@ -1,5 +1,6 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -7,8 +8,7 @@ from .models import Project, Issue, Contributor, Comment
 from .permissions import (
     ProjectPermissions,
     ContributorPermissions,
-    IssuePermissions,
-    CommentPermissions,
+    IssueCommentPermissions,
 )
 from .serializers import (
     ProjectSerializer,
@@ -29,7 +29,9 @@ def project_list(request):
     elif request.method == 'POST':
         data = request.data.copy()
         data['author'] = request.user.id
+
         serializer = ProjectSerializer(data=data)
+
         if serializer.is_valid(raise_exception=True):
             project = serializer.save()
             Contributor.objects.create(user=request.user, project=project, role='AUTHOR')
@@ -42,10 +44,7 @@ def project_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated, ProjectPermissions])
 def project_detail(request, project_pk):
-    try:
-        project = Project.objects.get(id=project_pk)
-    except Project.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    project = get_object_or_404(Project, id=project_pk)
 
     if request.method == 'GET':
         serializer = ProjectSerializer(project)
@@ -54,7 +53,9 @@ def project_detail(request, project_pk):
     elif request.method == 'PUT':
         data = request.data.copy()
         data['author'] = request.user.id
+
         serializer = ProjectSerializer(project, data=data)
+
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
@@ -63,16 +64,13 @@ def project_detail(request, project_pk):
 
     elif request.method == 'DELETE':
         project.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response('Project successfully deleted.', status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated, ContributorPermissions])
 def contributor_list(request, project_pk):
-    try:
-        project = Project.objects.get(id=project_pk)
-    except Project.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    project = get_object_or_404(Project, id=project_pk)
 
     if request.method == 'GET':
         contributors = Contributor.objects.filter(project=project)
@@ -83,43 +81,42 @@ def contributor_list(request, project_pk):
         data = request.data.copy()
         data['project'] = project.id
 
-        contrib_list = []
-        contributors = Contributor.objects.filter(project=project)
-        for contrib in contributors:
-            contrib_list.append(contrib.user)
-
-        if data['user'] in contrib_list:
+        try:
+            Contributor.objects.get(user=data['user'], project=project.id)
             return Response('This user has already been added.', status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = ContributorSerializer(data=data)
+        except Contributor.DoesNotExist:
+            serializer = ContributorSerializer(data=data)
 
-        if serializer.is_valid(raise_exception=True):
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            if serializer.is_valid(raise_exception=True):
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated, ContributorPermissions])
-def contributor_detail(request, contributor_pk):
+def contributor_detail(request, project_pk, contributor_pk):
     try:
-        contributor = Contributor.objects.get(id=contributor_pk)
-    except Contributor.DoesNotExist:
+        Project.objects.get(id=project_pk)
+    except Project.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
 
+    contributor = get_object_or_404(Contributor, id=contributor_pk)
+
     if request.method == 'DELETE':
-        contributor.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        if contributor.role == 'AUTHOR':
+            return Response('Project author cannot be deleted.', status=status.HTTP_400_BAD_REQUEST)
+        else:
+            contributor.delete()
+            return Response('Contributor successfully deleted.', status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated, IssuePermissions])
+@permission_classes([IsAuthenticated, IssueCommentPermissions])
 def issue_list(request, project_pk):
-    try:
-        project = Project.objects.get(id=project_pk)
-    except Project.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    project = get_object_or_404(Project, id=project_pk)
 
     if request.method == 'GET':
         issues = Issue.objects.filter(project=project)
@@ -130,45 +127,58 @@ def issue_list(request, project_pk):
         data = request.data.copy()
         data['project'] = project.id
         data['author'] = request.user.id
-        serializer = IssueSerializer(data=data)
-        if serializer.is_valid(raise_exception=True):
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            Contributor.objects.get(id=data['assignee'], project=project.id)
+            serializer = IssueSerializer(data=data)
+
+            if serializer.is_valid(raise_exception=True):
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except Contributor.DoesNotExist:
+            return Response('This user is not contributing to this project.', status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PUT', 'DELETE'])
-@permission_classes([IsAuthenticated, IssuePermissions])
-def issue_detail(request, issue_pk):
-    try:
-        issue = Issue.objects.get(id=issue_pk)
-    except Issue.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+@permission_classes([IsAuthenticated, IssueCommentPermissions])
+def issue_detail(request, project_pk, issue_pk):
+    project = get_object_or_404(Project, id=project_pk)
+    issue = get_object_or_404(Issue, id=issue_pk)
 
     if request.method == 'PUT':
         data = request.data.copy()
-        data['project'] = issue.project
+        data['project'] = project.id
         data['author'] = request.user.id
-        serializer = IssueSerializer(issue, data=data)
-        if serializer.is_valid(raise_exception=True):
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            Contributor.objects.get(id=data['assignee'], project=project.id)
+            serializer = IssueSerializer(issue, data=data)
+            if serializer.is_valid(raise_exception=True):
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except Contributor.DoesNotExist:
+            return Response('This user is not contributing to this project.', status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
         issue.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response('Issue successfully deleted.', status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated, CommentPermissions])
-def comment_list(request, issue_pk):
+@permission_classes([IsAuthenticated, IssueCommentPermissions])
+def comment_list(request, project_pk, issue_pk):
     try:
-        issue = Issue.objects.get(id=issue_pk)
-    except Issue.DoesNotExist:
+        Project.objects.get(id=project_pk)
+    except Project.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
+
+    issue = get_object_or_404(Issue, id=issue_pk)
 
     if request.method == 'GET':
         comments = Comment.objects.filter(issue=issue)
@@ -179,7 +189,9 @@ def comment_list(request, issue_pk):
         data = request.data.copy()
         data['issue'] = issue.id
         data['author'] = request.user.id
+
         serializer = CommentSerializer(data=data)
+
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -188,12 +200,15 @@ def comment_list(request, issue_pk):
 
 
 @api_view(['GET', 'PUT', 'DELETE'])
-@permission_classes([IsAuthenticated, CommentPermissions])
-def comment_detail(request, comment_pk):
+@permission_classes([IsAuthenticated, IssueCommentPermissions])
+def comment_detail(request, project_pk, issue_pk, comment_pk):
     try:
-        comment = Comment.objects.get(id=comment_pk)
-    except Comment.DoesNotExist:
+        Project.objects.get(id=project_pk)
+    except Project.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
+
+    issue = get_object_or_404(Issue, id=issue_pk)
+    comment = get_object_or_404(Comment, id=comment_pk)
 
     if request.method == 'GET':
         serializer = CommentSerializer(comment)
@@ -201,15 +216,17 @@ def comment_detail(request, comment_pk):
 
     elif request.method == 'PUT':
         data = request.data.copy()
-        data['issue'] = comment.issue
+        data['issue'] = issue.id
         data['author'] = request.user.id
-        serializer = ProjectSerializer(comment, data=data)
+
+        serializer = CommentSerializer(comment, data=data)
+
         if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
         comment.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response('Comment successfully deleted.', status=status.HTTP_204_NO_CONTENT)
