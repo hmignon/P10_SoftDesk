@@ -64,7 +64,6 @@ pip install -r requirements.txt
 #### Faire les migrations (si nécessaire) :
 
 ```
-python manage.py makemigrations
 python manage.py migrate
 ```
 
