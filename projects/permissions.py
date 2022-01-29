@@ -1,44 +1,46 @@
 from rest_framework import permissions
+from rest_framework.generics import get_object_or_404
 
-from .models import Project
+from .models import Project, Issue, Comment
 
 
 class ProjectPermissions(permissions.BasePermission):
     def has_permission(self, request, view):
-        return True
-
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
+        try:
+            project = get_object_or_404(Project, id=view.kwargs['project_pk'])
+            if request.method in permissions.SAFE_METHODS:
+                return True
+            return request.user == project.author
+        except KeyError:
             return True
-        return request.user == obj.author
 
 
 class ContributorPermissions(permissions.BasePermission):
     def has_permission(self, request, view):
-        project = Project.objects.get(id=view.kwargs['project_pk'])
-        user_projects = Project.objects.filter(contributors__user=request.user)
-        if project in user_projects:
-            if request.method in permissions.SAFE_METHODS:
-                return True
-            return request.user == project.author
-        return False
-
-    def has_object_permission(self, request, view, obj):
-        project = Project.objects.get(id=view.kwargs['project_pk'])
+        project = get_object_or_404(Project, id=view.kwargs['project_pk'])
         if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user == project.author
+            return project in Project.objects.filter(contributors__user=request.user)
+        else:
+            return project in Project.objects.filter(author=request.user)
 
 
-class IssueCommentPermissions(permissions.BasePermission):
+class IssuePermissions(permissions.BasePermission):
     def has_permission(self, request, view):
-        project = Project.objects.get(id=view.kwargs['project_pk'])
-        user_projects = Project.objects.filter(contributors__user=request.user)
-        if project in user_projects:
-            return True
-        return False
+        project = get_object_or_404(Project, id=view.kwargs['project_pk'])
+        try:
+            issue = get_object_or_404(Issue, id=view.kwargs['issue_pk'])
+            return request.user == issue.author
+        except KeyError:
+            return project in Project.objects.filter(contributors__user=request.user)
 
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user == obj.author
+
+class CommentPermissions(permissions.BasePermission):
+    def has_permission(self, request, view):
+        project = get_object_or_404(Project, id=view.kwargs['project_pk'])
+        try:
+            comment = get_object_or_404(Comment, id=view.kwargs['comment_pk'])
+            if request.method in permissions.SAFE_METHODS:
+                return project in Project.objects.filter(contributors__user=request.user)
+            return request.user == comment.author
+        except KeyError:
+            return project in Project.objects.filter(contributors__user=request.user)
