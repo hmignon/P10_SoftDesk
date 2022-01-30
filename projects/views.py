@@ -134,11 +134,10 @@ def issue_list(request, project_pk):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         except Contributor.DoesNotExist:
-            try:
-                User.objects.get(id=data['user'])
-                return Response('This user is not contributing to this project.', status=status.HTTP_400_BAD_REQUEST)
-            except User.DoesNotExist:
-                return Response('This user does not exist.', status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                'This user is not contributing to this project or does not exist.',
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 @api_view(['PUT', 'DELETE'])
@@ -161,11 +160,10 @@ def issue_detail(request, project_pk, issue_pk):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         except Contributor.DoesNotExist:
-            try:
-                User.objects.get(id=data['user'])
-                return Response('This user is not contributing to this project.', status=status.HTTP_400_BAD_REQUEST)
-            except User.DoesNotExist:
-                return Response('This user does not exist.', status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                'This user is not contributing to this project or does not exist.',
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     elif request.method == 'DELETE':
         issue.delete()

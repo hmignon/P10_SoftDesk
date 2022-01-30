@@ -9,7 +9,7 @@ class ProjectPermissions(permissions.BasePermission):
         try:
             project = get_object_or_404(Project, id=view.kwargs['project_pk'])
             if request.method in permissions.SAFE_METHODS:
-                return True
+                return project in Project.objects.filter(contributors__user=request.user)
             return request.user == project.author
         except KeyError:
             return True
@@ -20,8 +20,7 @@ class ContributorPermissions(permissions.BasePermission):
         project = get_object_or_404(Project, id=view.kwargs['project_pk'])
         if request.method in permissions.SAFE_METHODS:
             return project in Project.objects.filter(contributors__user=request.user)
-        else:
-            return project in Project.objects.filter(author=request.user)
+        return request.user == project.author
 
 
 class IssuePermissions(permissions.BasePermission):
